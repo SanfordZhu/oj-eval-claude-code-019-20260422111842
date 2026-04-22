@@ -13,6 +13,7 @@ void Calculate(std::vector<Matrix *> keys, std::vector<Matrix *> values,
     gpu_sim.MoveMatrixToSharedMem(current_query);
 
     // Stack keys along rows in SRAM: K_acc (i+1, d)
+    gpu_sim.MoveMatrixToSharedMem(keys[0]);
     Matrix *k_acc = matrix_memory_allocator.Allocate("k_acc_init");
     gpu_sim.Copy(keys[0], k_acc, kInSharedMemory);
     for (size_t j = 1; j <= i; ++j) {
@@ -24,6 +25,7 @@ void Calculate(std::vector<Matrix *> keys, std::vector<Matrix *> values,
     }
 
     // Stack values along rows in SRAM: V_acc (i+1, d)
+    gpu_sim.MoveMatrixToSharedMem(values[0]);
     Matrix *v_acc = matrix_memory_allocator.Allocate("v_acc_init");
     gpu_sim.Copy(values[0], v_acc, kInSharedMemory);
     for (size_t j = 1; j <= i; ++j) {
