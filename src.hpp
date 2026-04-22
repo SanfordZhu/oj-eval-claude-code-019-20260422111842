@@ -9,35 +9,31 @@ void Calculate(std::vector<Matrix *> keys, std::vector<Matrix *> values,
   for (size_t i = 0; i < keys.size(); ++i) {
     auto current_query = rater.GetNextQuery();
 
-    // Move operands to SRAM
-    gpu_sim.MoveMatrixToSharedMem(current_query);
-
-    // Stack keys along rows in SRAM: K_acc (i+1, d)
-    gpu_sim.MoveMatrixToSharedMem(keys[0]);
+    // Build K_acc in HBM by concatenating rows, then transpose and move once
     Matrix *k_acc = matrix_memory_allocator.Allocate("k_acc_init");
-    gpu_sim.Copy(keys[0], k_acc, kInSharedMemory);
+    gpu_sim.Copy(keys[0], k_acc, kInGpuHbm);
     for (size_t j = 1; j <= i; ++j) {
-      gpu_sim.MoveMatrixToSharedMem(keys[j]);
       Matrix *k_new = matrix_memory_allocator.Allocate("k_acc_step");
-      gpu_sim.Concat(k_acc, keys[j], k_new, /*axis=*/0, kInSharedMemory);
+      gpu_sim.Concat(k_acc, keys[j], k_new, /*axis=*/0, kInGpuHbm);
       gpu_sim.ReleaseMatrix(k_acc);
       k_acc = k_new;
     }
+    gpu_sim.Transpose(k_acc, kInGpuHbm); // K^T (d, i+1)
 
-    // Stack values along rows in SRAM: V_acc (i+1, d)
-    gpu_sim.MoveMatrixToSharedMem(values[0]);
+    // Build V_acc in HBM by concatenating rows
     Matrix *v_acc = matrix_memory_allocator.Allocate("v_acc_init");
-    gpu_sim.Copy(values[0], v_acc, kInSharedMemory);
+    gpu_sim.Copy(values[0], v_acc, kInGpuHbm);
     for (size_t j = 1; j <= i; ++j) {
-      gpu_sim.MoveMatrixToSharedMem(values[j]);
       Matrix *v_new = matrix_memory_allocator.Allocate("v_acc_step");
-      gpu_sim.Concat(v_acc, values[j], v_new, /*axis=*/0, kInSharedMemory);
+      gpu_sim.Concat(v_acc, values[j], v_new, /*axis=*/0, kInGpuHbm);
       gpu_sim.ReleaseMatrix(v_acc);
       v_acc = v_new;
     }
 
-    // Transpose K_acc -> K^T (d, i+1)
-    gpu_sim.Transpose(k_acc, kInSharedMemory);
+    // Move operands to SRAM once
+    gpu_sim.MoveMatrixToSharedMem(current_query);
+    gpu_sim.MoveMatrixToSharedMem(k_acc);
+    gpu_sim.MoveMatrixToSharedMem(v_acc);
 
     // scores = Q (i+1 x d) * K^T (d x i+1)
     Matrix *scores = matrix_memory_allocator.Allocate("scores");
@@ -86,8 +82,6 @@ void Calculate(std::vector<Matrix *> keys, std::vector<Matrix *> values,
 
     gpu_sim.Run(false, &matrix_memory_allocator);
     rater.CommitAnswer(*ans_acc);
-    // Free SRAM pressure
-    gpu_sim.MoveMatrixToGpuHbm(current_query);
   }
 }
 
