@@ -86,6 +86,8 @@ void Calculate(std::vector<Matrix *> keys, std::vector<Matrix *> values,
 
     gpu_sim.Run(false, &matrix_memory_allocator);
     rater.CommitAnswer(*ans_acc);
+    // Free SRAM pressure
+    gpu_sim.MoveMatrixToGpuHbm(current_query);
   }
 }
 
